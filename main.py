@@ -11,17 +11,20 @@ from line_sender import send_reminder
 from moodle_scraper import fetch_assignments
 
 # ログを標準エラー＋ファイルに出力（プロジェクトルート基準の絶対パス）
-LOG_DIR = PROJECT_ROOT / "logs"
-LOG_DIR.mkdir(exist_ok=True)
-LOG_FILE = LOG_DIR / "moodle_reminder.log"
+# Railway 等ではファイル書き込みができない場合があるため、ファイルはオプション
+handlers = [logging.StreamHandler(sys.stderr)]
+try:
+    LOG_DIR = PROJECT_ROOT / "logs"
+    LOG_DIR.mkdir(exist_ok=True)
+    LOG_FILE = LOG_DIR / "moodle_reminder.log"
+    handlers.append(logging.FileHandler(LOG_FILE, encoding="utf-8"))
+except OSError:
+    pass  # ファイルに書けない環境（Railway 等）では stderr のみ
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stderr),
-        logging.FileHandler(LOG_FILE, encoding="utf-8"),
-    ],
+    handlers=handlers,
 )
 logger = logging.getLogger(__name__)
 
