@@ -57,7 +57,7 @@ _raw_totp = get("TOTP_SECRET")
 TOTP_SECRET = _raw_totp[:32] if len(_raw_totp) > 32 else _raw_totp
 
 LINE_CHANNEL_ACCESS_TOKEN = get("LINE_CHANNEL_ACCESS_TOKEN")
-LINE_USER_ID = get("LINE_USER_ID")
+LINE_USER_IDS = [uid.strip() for uid in get("LINE_USER_ID").split(",") if uid.strip()]
 REMINDER_DAYS = max(0, get_int("REMINDER_DAYS", 1))
 
 # Moodle へのアクセス間隔（秒）。学校サーバーへの負荷軽減・バグ時の連打防止用

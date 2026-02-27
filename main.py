@@ -4,11 +4,17 @@ Moodle の課題を取得し、締切が N 日以内のものを LINE に送信�
 """
 import logging
 import sys
+import traceback
 from pathlib import Path
 
-from config import MOODLE_URL, PROJECT_ROOT, REMINDER_DAYS, _ENV_LOADED_FROM
-from line_sender import send_reminder
-from moodle_scraper import fetch_assignments
+try:
+    from config import MOODLE_URL, PROJECT_ROOT, REMINDER_DAYS, _ENV_LOADED_FROM
+    from line_sender import send_reminder
+    from moodle_scraper import fetch_assignments
+except Exception as e:
+    print(f"インポートエラー: {e}", file=sys.stderr)
+    traceback.print_exc()
+    sys.exit(1)
 
 # ログを標準エラー＋ファイルに出力（プロジェクトルート基準の絶対パス）
 # Railway 等ではファイル書き込みができない場合があるため、ファイルはオプション
@@ -53,4 +59,10 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    print("Moodle リマインドを起動しています...", flush=True)
+    try:
+        sys.exit(main())
+    except Exception as e:
+        print(f"エラー: {e}", file=sys.stderr)
+        traceback.print_exc()
+        sys.exit(1)

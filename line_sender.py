@@ -2,11 +2,12 @@
 LINE Messaging API でプッシュメッセージを送信する。
 """
 import logging
+import re
 from typing import List
 
 import requests
 
-from config import LINE_CHANNEL_ACCESS_TOKEN, LINE_USER_ID, MOODLE_URL
+from config import LINE_CHANNEL_ACCESS_TOKEN, LINE_USER_IDS, MOODLE_URL
 from models import Assignment
 
 logger = logging.getLogger(__name__)
@@ -14,6 +15,14 @@ logger = logging.getLogger(__name__)
 LINE_PUSH_URL = "https://api.line.me/v2/bot/message/push"
 # テキストメッセージは最大 5000 文字（LINE の仕様）
 MAX_TEXT_LENGTH = 5000
+
+# LINE User ID: U + 英数字32文字（改行・スペース等の混入を防ぐ）
+LINE_USER_ID_PATTERN = re.compile(r"^U[a-zA-Z0-9]{32}$")
+
+
+def _sanitize_user_id(uid: str) -> str:
+    """改行・スペース・制御文字を除去し、LINE API が受け付ける形式にする。"""
+    return "".join(c for c in uid if c.isalnum() or c == "_")
 
 
 def send_text(to_user_id: str, text: str) -> bool:
@@ -27,6 +36,17 @@ def send_text(to_user_id: str, text: str) -> bool:
         return False
     if not to_user_id:
         logger.error("送信先 LINE_USER_ID が設定されていません")
+        return False
+
+    # 改行・BOM・余分な空白などが混入していると LINE API が "to" invalid を返す
+    to_user_id = _sanitize_user_id(to_user_id.strip())
+    if not LINE_USER_ID_PATTERN.match(to_user_id):
+        logger.error(
+            "LINE_USER_ID の形式が不正です（U+英数字32文字である必要があります）: "
+            "len=%d repr=%r",
+            len(to_user_id),
+            to_user_id[:20] + "..." if len(to_user_id) > 20 else to_user_id,
+        )
         return False
 
     headers = {
@@ -52,6 +72,15 @@ def send_text(to_user_id: str, text: str) -> bool:
         return False
 
 
+def _send_text_to_all(text: str) -> bool:
+    """全ユーザーにテキストを送信する。1人でも失敗したら False を返す。"""
+    if not LINE_USER_IDS:
+        logger.error("LINE_USER_ID が設定されていません")
+        return False
+    results = [send_text(uid, text) for uid in LINE_USER_IDS]
+    return all(results)
+
+
 def format_reminder_message(assignments: List[Assignment], reminder_days: int) -> str:
     """課題リストを LINE 用のリマインド文に整形する。"""
     if not assignments:
@@ -67,21 +96,20 @@ def format_reminder_message(assignments: List[Assignment], reminder_days: int) -
 def send_reminder(assignments: List[Assignment], reminder_days: int) -> bool:
     """
     リマインドメッセージを LINE で送信する。
-    長い場合は複数メッセージに分割する。
+    長い場合は複数メッセージに分割して全ユーザーに送る。
     """
     body = format_reminder_message(assignments, reminder_days)
-    # 1 通で送れる長さを超える場合は分割（簡易: 前半のみ送る or 複数 push）
     if len(body) <= MAX_TEXT_LENGTH:
-        return send_text(LINE_USER_ID, body)
+        return _send_text_to_all(body)
     # 分割送信
     sent = True
     chunk = ""
     for line in body.split("\n"):
         if len(chunk) + len(line) + 1 > MAX_TEXT_LENGTH and chunk:
-            if not send_text(LINE_USER_ID, chunk):
+            if not _send_text_to_all(chunk):
                 sent = False
             chunk = ""
         chunk += (line + "\n") if chunk else line
     if chunk and sent:
-        sent = send_text(LINE_USER_ID, chunk.strip())
+        sent = _send_text_to_all(chunk.strip())
     return sent
